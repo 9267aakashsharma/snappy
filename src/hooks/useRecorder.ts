@@ -37,12 +37,12 @@ const useRecorder = (videoBitsPerSecond: number | undefined = 12000000) => {
     }
   };
 
-  const start = ({
+  const start = async ({
     stream,
     localStream,
   }: {
     stream: MediaStream;
-    localStream?: MediaStream;
+    localStream: MediaStream | null;
   }) => {
     if (!stream) {
       throw Error("No stream found");
@@ -108,6 +108,7 @@ const useRecorder = (videoBitsPerSecond: number | undefined = 12000000) => {
   const stop = () => {
     recorder.current?.requestData();
     recorder.current?.stop();
+    console.log("requested-stop");
   };
 
   const pause = () => {

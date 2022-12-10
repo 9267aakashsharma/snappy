@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 
 import {
@@ -8,7 +8,7 @@ import {
   MessageTypes,
   StartRecordingProps,
 } from "../types";
-import { useRecorder } from "../hooks";
+import { useMediaStream, useRecorder } from "../hooks";
 import { UserMedia } from "../components";
 import styled from "styled-components";
 
@@ -30,76 +30,56 @@ let showPopupDiv = {
 
 const DOMHandler = () => {
   const [error, setError] = useState<string>();
-  const [userStream, setUserStream] = useState<MediaStream | null>(null);
   const [showPopup, setShowPopup] = useState(showPopupDiv.show);
 
   const { start, stop, state, getBlobs } = useRecorder();
+  const { stream, startStream, stopStream } = useMediaStream();
 
-  const getUserMediaStream = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-      video: {
-        facingMode: "user",
-        width: { min: 1024, ideal: 1280, max: 1920 },
-        height: { min: 576, ideal: 720, max: 1080 },
-      },
-    });
-    return stream;
-  };
+  const handleRecording = useCallback(
+    async (payload: StartRecordingProps): Promise<MessageResponse> => {
+      try {
+        const { streamId } = payload;
 
-  const handleRecording = async (
-    payload: StartRecordingProps
-  ): Promise<MessageResponse> => {
-    try {
-      const { streamId } = payload;
+        if (!streamId || !streamId.length) {
+          showPopupDiv.show = true;
+          setError("Stream Id is required to start the recording");
+          return {
+            success: false,
+            type: MessageResponseTypes.error,
+            message: "Stream Id is required to start the recording",
+          };
+        }
 
-      if (!streamId || !streamId.length) {
-        showPopupDiv.show = true;
-        setError("Stream Id is required to start the recording");
+        const screenStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            // @ts-ignore
+            mandatory: {
+              chromeMediaSource: "desktop",
+              chromeMediaSourceId: streamId,
+            },
+          },
+        });
+
+        if (!screenStream)
+          throw new Error("Could not get the screen stream from the stream id");
+
+        start({ stream: screenStream, localStream: stream });
+
+        return {
+          success: true,
+          message: "Recording started",
+          type: MessageResponseTypes.success,
+        };
+      } catch (error: any) {
         return {
           success: false,
           type: MessageResponseTypes.error,
-          message: "Stream Id is required to start the recording",
+          message: error.message || "Failed to record",
         };
       }
-
-      const screenStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          // @ts-ignore
-          mandatory: {
-            chromeMediaSource: "desktop",
-            chromeMediaSourceId: streamId,
-          },
-        },
-      });
-
-      if (!screenStream)
-        throw new Error("Could not get the screen stream from the stream id");
-
-      console.log("stream-in-recording", userStream);
-      const audioStream = userStream
-        ? new MediaStream([...userStream.getAudioTracks()])
-        : undefined;
-      start({ stream: screenStream, localStream: audioStream });
-
-      return {
-        success: true,
-        message: "Recording started",
-        type: MessageResponseTypes.success,
-      };
-    } catch (error: any) {
-      setError(error.message || "Failed to record");
-      return {
-        success: false,
-        type: MessageResponseTypes.error,
-        message: error.message || "Failed to record",
-      };
-    }
-  };
+    },
+    [start, stream]
+  );
 
   const handleRecord = () => {
     showPopupDiv.show = false;
@@ -115,36 +95,38 @@ const DOMHandler = () => {
     });
   };
 
-  const messageHandler = async (message: Message): Promise<MessageResponse> => {
-    if (message.type === MessageTypes.startRecording) {
-      if (!message.payload)
+  const messageHandler = useCallback(
+    async (message: Message): Promise<MessageResponse> => {
+      if (message.type === MessageTypes.startRecording) {
+        if (!message.payload)
+          return {
+            success: false,
+            type: MessageResponseTypes.error,
+            message: "Could not find the payload stream",
+          };
+        return await handleRecording(message.payload);
+      } else if (message.type === MessageTypes.iconClicked) {
+        if (state === "recording") {
+          stop();
+          stopStream();
+        } else {
+          showPopupDiv.show = true;
+          await startStream();
+        }
         return {
-          success: false,
-          type: MessageResponseTypes.error,
-          message: "Could not find the payload stream",
+          success: true,
+          message: "Popup shown",
+          type: MessageResponseTypes.success,
         };
-      console.log("stream-in-messageHandler", userStream);
-      return await handleRecording(message.payload);
-    } else if (message.type === MessageTypes.iconClicked) {
-      if (state === "recording") {
-        stop();
-      } else {
-        showPopupDiv.show = true;
-        const stream = await getUserMediaStream();
-        setUserStream(stream);
       }
       return {
-        success: true,
-        message: "Popup shown",
-        type: MessageResponseTypes.success,
+        success: false,
+        type: MessageResponseTypes.error,
+        message: "Unknown message type",
       };
-    }
-    return {
-      success: false,
-      type: MessageResponseTypes.error,
-      message: "Unknown message type",
-    };
-  };
+    },
+    [state, startStream, stop, stopStream, handleRecording]
+  );
 
   useEffect(() => {
     (async () => {
@@ -214,26 +196,18 @@ const DOMHandler = () => {
 
       return true; // NOTE - This is done because the response might be asynchronous
     });
-  }, []);
-
-  useEffect(() => {
-    console.log("stream", userStream);
-  }, [userStream]);
-
-  useEffect(() => {
-    console.log("state", state);
-  }, [state]);
+  }, [messageHandler]);
 
   return (
     <>
-      {(showPopDiv || state === "recording") && (
-        <UserMedia stream={userStream} />
-      )}
+      {(showPopDiv || state === "recording") && <UserMedia stream={stream} />}
       {showPopup && (
         <Popup>
-          <button onClick={handleRecord}>
+          <TextBtn onClick={handleRecord}>
             {state === "recording" ? "Stop Recording" : "Start Recording"}
-          </button>
+          </TextBtn>
+          <CircleFilled />
+          <CircleOutline onClick={handleRecord} />
           {error && <p>{error}</p>}
         </Popup>
       )}
@@ -281,6 +255,46 @@ const Popup = styled.div`
   flex-direction: column;
   border-radius: 0.375rem;
   color: rgb(243, 244, 246);
-  background-color: rgb(55, 65, 81);
+  background-color: #222;
   box-shadow: rgba(0, 0, 0, 0.35) 0px 5px 15px;
+`;
+
+const CircleOutline = styled.div`
+  position: absolute;
+  margin: auto;
+  top: 33%;
+  left: 33%;
+  background-color: transparent;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  height: 100px;
+  width: 100px;
+  cursor: pointer;
+`;
+
+const CircleFilled = styled.div`
+  position: absolute;
+  margin: auto;
+  top: 33%;
+  left: 33%;
+  margin-top: 10px;
+  margin-left: 10px;
+  background-color: red;
+  border-radius: 50%;
+  height: 80px;
+  width: 80px;
+`;
+
+const TextBtn = styled.button`
+  background-color: transparent;
+  border: none;
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  margin-top: 80%;
+  &:hover {
+    color: #ccc;
+  }
 `;
