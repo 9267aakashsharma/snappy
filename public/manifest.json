@@ -1,25 +1,38 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
-  "icons": [
+  "name": "Snappy",
+  "description": "The next loom",
+  "version": "1.0",
+  "manifest_version": 3,
+  "action": {
+    "default_title": "Click to start Video recording"
+  },
+  "icons": {
+    "16": "logo192.png",
+    "48": "logo192.png",
+    "128": "logo192.png"
+  },
+  "background": {
+    "service_worker": "./static/js/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "logo192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "logo512.png",
-      "type": "image/png",
-      "sizes": "512x512"
+      "matches": ["http://*/*", "https://*/*"],
+      "css": ["root.css"],
+      "js": ["./static/js/content.js"]
     }
   ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "permissions": [
+    "activeTab",
+    "desktopCapture",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["__TO_BE_REPLACED_ON_BUILD__", "*.woff2"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ]
 }

@@ -1,0 +1,17 @@
+#snappy-root {
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483640;
+  overflow-y: auto;
+  pointer-events: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  background-color: transparent;
+}
+
+#snappy-root::-webkit-scrollbar {
+  display: none;
+}
